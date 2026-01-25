@@ -1,4 +1,4 @@
-// trigger build
+// Trigger build
 
 pipeline {
     agent any
