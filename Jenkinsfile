@@ -1,5 +1,3 @@
-// trigger build 2
-
 pipeline {
     agent any
 
@@ -36,11 +34,12 @@ pipeline {
             steps {
                 sh '''
                   docker build -t ${ECR_REPO}:${IMAGE_TAG} .
+                  docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
                 '''
             }
         }
 
-        stage('Login to ECR') {
+        stage('Login to AWS ECR') {
             steps {
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
@@ -57,7 +56,6 @@ pipeline {
         stage('Push Image to ECR') {
             steps {
                 sh '''
-                  docker tag ${ECR_REPO}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
                   docker push ${ECR_URI}:${IMAGE_TAG}
                 '''
             }
