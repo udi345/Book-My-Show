@@ -14,19 +14,17 @@ pipeline {
     }
 
     stages {
-
         stage('Checkout Code') {
             steps {
-                echo "Checking out source code"
                 git branch: 'main',
                     url: 'https://github.com/udi345/Book-My-Show.git',
                     credentialsId: 'github-creds'
             }
         }
 
-        stage('Build Test') {
+        stage('Build & Test') {
             steps {
-                echo "Build & test stage (dummy for now)"
+                echo "Build & test stage"
             }
         }
     }
