@@ -16,11 +16,13 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                checkout scm
+                git branch: 'main',
+                    url: 'https://github.com/udi345/Book-My-Show.git',
+                    credentialsId: 'github-creds'
             }
         }
 
-        stage('Create Test Report') {
+        stage('Build & Test') {
             steps {
                 sh '''
                 mkdir -p test-report
@@ -33,6 +35,7 @@ pipeline {
                         reportDir: 'test-report',
                         reportFiles: 'index.html',
                         reportName: 'TestNG HTML Test Report',
+                        allowMissing: false,
                         keepAll: true,
                         alwaysLinkToLastBuild: true
                     ])
@@ -42,7 +45,7 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                sh 'docker build -t bookmyshow:${BUILD_NUMBER} .'
+                sh "docker build -t bookmyshow:${BUILD_NUMBER} ."
             }
         }
 
@@ -72,10 +75,10 @@ pipeline {
 
     post {
         success {
-            echo "Pipeline completed successfully"
+            echo 'Pipeline completed successfully'
         }
         failure {
-            echo "Pipeline failed"
+            echo 'Pipeline failed'
         }
     }
 }
