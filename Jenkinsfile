@@ -43,47 +43,4 @@ pipeline {
             }
         }
 
-        stage('Docker Build') {
-            steps {
-                sh '''
-                docker build -t bookmyshow:${BUILD_NUMBER} .
-                '''
-            }
-        }
-
-        stage('Login to AWS ECR') {
-            steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-creds'
-                ]]) {
-                    sh '''
-                    echo "Logging in to AWS ECR..."
-                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-                    '''
-                }
-            }
-        }
-
-        stage('Push to ECR') {
-            steps {
-                sh '''
-                echo "Tagging Docker image..."
-                docker tag bookmyshow:${BUILD_NUMBER} ${ECR_URI}:${BUILD_NUMBER}
-
-                echo "Pushing image to AWS ECR..."
-                docker push ${ECR_URI}:${BUILD_NUMBER}
-                '''
-            }
-        }
-    }
-
-    post {
-        success {
-            echo 'Pipeline completed successfully'
-        }
-        failure {
-            echo 'Pipeline failed'
-        }
-    }
-}
+        
