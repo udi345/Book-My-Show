@@ -8,102 +8,91 @@ pipeline {
         IMAGE_TAG = "${BUILD_NUMBER}"
         ECR_URI = "${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
         CLUSTER_NAME = "bookmyshow-cluster"
-        NAMESPACE_DEV = "dev"
-        NAMESPACE_STAGE = "stage"
-        NAMESPACE_PROD = "prod"
     }
 
     stages {
 
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/<YOUR-USERNAME>/<YOUR-REPO>.git'
+                git branch: 'main', url: 'https://github.com/udi345/Book-My-Show.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh '''
-                docker build -t $ECR_REPO:$IMAGE_TAG .
-                docker tag $ECR_REPO:$IMAGE_TAG $ECR_URI:$IMAGE_TAG
-                docker tag $ECR_REPO:$IMAGE_TAG $ECR_URI:latest
-                '''
+                sh 'docker build -t bookmyshow .'
             }
         }
 
         stage('Login to AWS ECR') {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-creds'
+                ]]) {
                     sh '''
-                    aws ecr get-login-password --region $AWS_REGION | \
-                    docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                    aws ecr get-login-password --region $AWS_REGION \
+                    | docker login --username AWS --password-stdin $ECR_URI
                     '''
                 }
             }
         }
 
-        stage('Push Image to ECR') {
+        stage('Tag & Push Image') {
             steps {
                 sh '''
+                docker tag bookmyshow:latest $ECR_URI:$IMAGE_TAG
                 docker push $ECR_URI:$IMAGE_TAG
-                docker push $ECR_URI:latest
+                '''
+            }
+        }
+
+        stage('Update Kubernetes Deployment File') {
+            steps {
+                sh '''
+                sed -i "s|REPLACE_IMAGE|$ECR_URI:$IMAGE_TAG|g" deployment.yml
                 '''
             }
         }
 
         stage('Connect to EKS') {
             steps {
-                sh '''
-                aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_NAME
-                '''
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-creds'
+                ]]) {
+                    sh '''
+                    aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_NAME
+                    '''
+                }
             }
         }
 
-        stage('Create Namespaces') {
+        stage('Deploy to Kubernetes') {
             steps {
                 sh '''
-                kubectl create namespace $NAMESPACE_DEV --dry-run=client -o yaml | kubectl apply -f -
-                kubectl create namespace $NAMESPACE_STAGE --dry-run=client -o yaml | kubectl apply -f -
-                kubectl create namespace $NAMESPACE_PROD --dry-run=client -o yaml | kubectl apply -f -
+                kubectl apply -f deployment.yml
+                kubectl apply -f service.yml
                 '''
             }
         }
 
-        stage('Deploy to DEV') {
+        stage('Verify & Rollback Deployment') {
             steps {
-                sh '''
-                sed -i "s|IMAGE_PLACEHOLDER|$ECR_URI:$IMAGE_TAG|g" k8s/deployment.yaml
-                kubectl apply -f k8s/ -n $NAMESPACE_DEV
-                kubectl rollout status deployment/bookmyshow -n $NAMESPACE_DEV
-                '''
-            }
-        }
+                script {
+                    def status = sh(script: "kubectl rollout status deployment/bms-app --timeout=120s", returnStatus: true)
 
-        stage('Deploy to STAGE') {
-            steps {
-                sh '''
-                kubectl apply -f k8s/ -n $NAMESPACE_STAGE
-                kubectl rollout status deployment/bookmyshow -n $NAMESPACE_STAGE
-                '''
+                    if (status != 0) {
+                        sh '''
+                        echo "Deployment failed. Rolling back..."
+                        kubectl rollout undo deployment/bms-app
+                        '''
+                        error("Deployment Failed → Rollback executed")
+                    } else {
+                        echo "Deployment successful"
+                    }
+                }
             }
-        }
-
-        stage('Deploy to PROD') {
-            steps {
-                sh '''
-                kubectl apply -f k8s/ -n $NAMESPACE_PROD
-                kubectl rollout status deployment/bookmyshow -n $NAMESPACE_PROD
-                '''
-            }
-        }
-    }
-
-    post {
-        success {
-            echo "Deployment Successful 🚀"
-        }
-        failure {
-            echo "Deployment Failed ❌"
         }
     }
 }
